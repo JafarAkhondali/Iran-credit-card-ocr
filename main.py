@@ -8,12 +8,15 @@ import pytesseract
 # img_name = './dataset/saderat1.jpg'
 # img_name = './dataset/bgwm.jpg'
 
-# img_name = './dataset/keshm.jpg' #TODO SLOW - CC
+# img_name = './dataset/keshm.jpg'
 # img_name = './dataset/melim.jpg'
 # img_name = './dataset/melatm2.jpg'
-img_name = './dataset/melatm3.jpg' #TODO CORNER
-# img_name = './dataset/meli_persm.jpg' #TODO CORNER
-# img_name = './dataset/meli_rotm.jpg' #TODO CC
+# img_name = './dataset/meli_persm.jpg'
+# img_name = './dataset/meli_rotm.jpg'
+
+#TODO: All of these are melat, so we have to specify ROI for Mellat
+
+# img_name = './dataset/melatm3.jpg' #TODO CC
 # img_name = './dataset/melatm.jpg' #TODO CC
 # img_name = './dataset/melatm.jpg' #TODO CC
 
@@ -414,17 +417,19 @@ print(bank_name)
 
 # We are only interested on part of cart that contains number,
 # on image with height of 150, the numbers should be on 80 - 125 range of H
-numbers_part = cc_image[80:125, 20:-20]
+numbers_part = cc_image[80:125, 10:-10]
 # 80 125
 
-# hsv = cv2.cvtColor(cropped_cart, cv2.COLOR_BGR2HSV)
+hsvNumber = cv2.cvtColor(numbers_part, cv2.COLOR_BGR2HSV)
+mask = cv2.inRange(hsvNumber, (0, 0, 0), (180, 255, 70))
+# mask = cv2.cvtColor(numbers_part, cv2.COLOR_BGR2HSV)
 #
 # lower_red = np.array([0, 0, 0])
 # upper_red = np.array([180, 255, 120])
 # mask = cv2.inRange(hsv, lower_red, upper_red)
-lower_red = np.array([0, 0, 0])
-upper_red = np.array([150, 150, 150])
-mask = cv2.inRange(numbers_part, lower_red, upper_red)
+# lower_red = np.array([0, 0, 0])
+# upper_red = np.array([100, 100, 100])
+# mask = cv2.inRange(numbers_part, lower_red, upper_red)
 showimg(mask)
 
 # contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
@@ -445,10 +450,10 @@ y_array = []
 
 for c in contours:
     carea = cv2.contourArea(c)
-    if carea > 4 * 7:
+    if carea >= 3 * 6 or carea == 0.0: # Sometimes carea is zero, contiue using rects
         [x, y, w, h] = cv2.boundingRect(c)
-        if h > 4 and w > 3:
-            if w * h > 4 * 7:
+        if h > 3 and w > 2:
+            if w * h >= 3 * 6:
                 x_array.append(x + (w // 2))
                 y_array.append(y + (h // 2))
                 contours_rect.append([x, y, w, h])
