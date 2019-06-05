@@ -1,20 +1,21 @@
 import cv2
 import math
 import numpy as np
-from random import randrange
 from collections import defaultdict
 import pytesseract
 
-# img_name = './dataset/meli_rotm.jpg'
+# img_name = './dataset/meli_rotm.jpg' #TODO CC
 # img_name = './dataset/bgwm.jpg'
-# img_name = './dataset/melim.jpg'
-# img_name = './dataset/melatm2.jpg'
-img_name = './dataset/saderat1.jpg'
 
-# img_name = './dataset/meli_persm.jpg'
-# img_name = './dataset/melatm.jpg'
-# img_name = './dataset/melatm.jpg'
-# img_name = './dataset/melatm3.jpg'
+# img_name = './dataset/melim.jpg' #TODO LOGO
+# img_name = './dataset/melatm2.jpg' #TODO CORNER
+# img_name = './dataset/keshm.jpg' #TODO SLOW
+# img_name = './dataset/saderat1.jpg'
+
+# img_name = './dataset/meli_persm.jpg' #TODO CORNER
+# img_name = './dataset/melatm.jpg' #TODO CC
+# img_name = './dataset/melatm.jpg' #TODO CC
+img_name = './dataset/melatm3.jpg' #TODO CORNER
 
 class LOGO:
     BANKS = {
@@ -32,6 +33,11 @@ class LOGO:
             'logo': cv2.imread('logos/saderat.png', 0),
             'name': 'SADERAT',
             'persian_name': 'SADERAT',
+        },
+        'KESHAVARZI': {
+            'logo': cv2.imread('logos/keshavarzi.png', 0),
+            'name': 'KESHAVARZI',
+            'persian_name': 'KESHAVARZI',
         },
     }
 
@@ -195,12 +201,19 @@ showimg(img)
 cv2.namedWindow('Image')
 # cv2.createTrackbar('ksize', 'Image', low_k, high_k, on_change)
 # on_change()
-blured_img = blur(img, 3)
+blured_img = bblur(img, 3)
 
 ggray = cv2.cvtColor(blured_img, cv2.COLOR_BGR2GRAY)
-th, dif = cv2.threshold(ggray, 127, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+th, dif = cv2.threshold(ggray, 190, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
 showimg(dif)
+kernel = np.ones((3, 3), np.uint8)
 
+dif = cv2.morphologyEx(dif, cv2.MORPH_OPEN, kernel, iterations=3)
+showimg(dif)
+# dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, kernel, iterations=10)
+# showimg(dif)
+# dif = cv2.morphologyEx(dif, cv2.MORPH_OPEN, kernel, iterations=3)
+# showimg(dif)
 """
 # bg = blur(blured_img, 201)
 bg = bblur(blured_img, 25)
@@ -243,8 +256,28 @@ showimg(dif)
 # img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 """
 # img_gray = cv2.cvtColor(dif, cv2.COLOR_BGR2GRAY)
+
+dif = cv2.morphologyEx(dif, cv2.MORPH_RECT, np.ones((7, 7), np.uint8))
+showimg(dif)
+dif = cv2.morphologyEx(dif, cv2.MORPH_CROSS, np.ones((3, 3), np.uint8), iterations=10)
+showimg(dif)
 edged_img = cv2.Canny(dif, 100, 100, 3)
 showimg(edged_img)
+countedges = cv2.countNonZero(edged_img)
+# print(countedges)
+
+# Dilate borders
+# edged_img = cv2.morphologyEx(edged_img, cv2.MORPH_OPEN, np.ones((3, 3)))
+# showimg(edged_img)
+
+# edged_img= cv2.morphologyEx(edged_img, cv2.MORPH_CLOSE, kernel)
+# showimg(edged_img)
+
+edged_img = cv2.dilate(edged_img, np.ones((3, 3), np.uint8), iterations=1)
+showimg(edged_img)
+
+# edged_img = cv2.morphologyEx(edged_img, cv2.MORPH_TOPHAT, kernel)
+# showimg(edged_img)
 
 lines = cv2.HoughLines(edged_img, 1, math.pi / 180, 60, 15, 10)
 # lines = cv2.HoughLinesP(edged_img, 1, math.pi / 180, 100, 15, 10)
@@ -274,27 +307,37 @@ segmented = segment_by_angle_kmeans(lines)
 intersections = segmented_intersections(segmented)
 print(len(intersections))
 corners = []
+near_thresh = 100
+if countedges > 3000:
+    near_thresh = 300
+elif countedges > 2000:
+    near_thresh = 200
+elif countedges > 1000:
+    near_thresh = 150
+
+print('----')
+print(near_thresh)
+print(countedges)
 
 for i in intersections:
     if i[0][0] < 0 or i[0][1] < 0:
         continue
     any_center_nearby = False
     for c in corners:
-        if near_point(i[0], c, 20):
+
+        if near_point(i[0], c, near_thresh):
             any_center_nearby = True
             break
     if any_center_nearby:
         continue
     corners.append(tuple(i[0]))
-# print(':|')
-# print(len(corners))
-# print(':|')
+
 print("Len of corners: {}".format(len(corners)))
 
 if len(corners) < 4:
     print('Wrong number of corners')
     exit(0)
-corners = corners[:4]
+corners = corners[:4]  # Take top four possibles, because it's sorted
 visualized_corners = np.copy(img)
 for c in corners:
     cv2.circle(visualized_corners, c, 5, (255, 0, 0))
@@ -327,15 +370,20 @@ showimg(cc_image)
 
 
 def find_bank(cc_image):
+    h_cc, w_cc, _ = cc_image.shape
+    roi_cc_image = cc_image[:h_cc // 2, w_cc // 2:]
     logos_prob = []
-
+    print('Finding bank logo')
     for key, value in LOGO.BANKS.items():
-        cc_image_gray = cv2.cvtColor(cc_image, cv2.COLOR_BGR2GRAY)
+        cc_image_gray = cv2.cvtColor(roi_cc_image, cv2.COLOR_BGR2GRAY)
         template_w, template_h = value['logo'].shape[::-1]
         res = cv2.matchTemplate(cc_image_gray, value['logo'], cv2.TM_CCOEFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
         top_left = max_loc
+        print(max_val)
+        top_left = (top_left[0] + w_cc//2, top_left[1])
         bottom_right = (top_left[0] + template_w, top_left[1] + template_h)
+
         logos_prob.append({
             'value': max_val,
             'top_left': top_left,
