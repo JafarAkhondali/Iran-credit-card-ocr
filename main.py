@@ -4,18 +4,19 @@ import numpy as np
 from collections import defaultdict
 import pytesseract
 
-# img_name = './dataset/meli_rotm.jpg' #TODO CC
+
+# img_name = './dataset/saderat1.jpg'
 # img_name = './dataset/bgwm.jpg'
 
-# img_name = './dataset/melim.jpg' #TODO LOGO
-# img_name = './dataset/melatm2.jpg' #TODO CORNER
-# img_name = './dataset/keshm.jpg' #TODO SLOW
-# img_name = './dataset/saderat1.jpg'
-
-# img_name = './dataset/meli_persm.jpg' #TODO CORNER
-# img_name = './dataset/melatm.jpg' #TODO CC
-# img_name = './dataset/melatm.jpg' #TODO CC
+# img_name = './dataset/keshm.jpg' #TODO SLOW - CC
+# img_name = './dataset/melim.jpg'
+# img_name = './dataset/melatm2.jpg'
 img_name = './dataset/melatm3.jpg' #TODO CORNER
+# img_name = './dataset/meli_persm.jpg' #TODO CORNER
+# img_name = './dataset/meli_rotm.jpg' #TODO CC
+# img_name = './dataset/melatm.jpg' #TODO CC
+# img_name = './dataset/melatm.jpg' #TODO CC
+
 
 class LOGO:
     BANKS = {
@@ -371,7 +372,7 @@ showimg(cc_image)
 
 def find_bank(cc_image):
     h_cc, w_cc, _ = cc_image.shape
-    roi_cc_image = cc_image[:h_cc // 2, w_cc // 2:]
+    roi_cc_image = cc_image[: 3*h_cc // 5, w_cc // 3:]
     logos_prob = []
     print('Finding bank logo')
     for key, value in LOGO.BANKS.items():
@@ -381,7 +382,7 @@ def find_bank(cc_image):
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
         top_left = max_loc
         print(max_val)
-        top_left = (top_left[0] + w_cc//2, top_left[1])
+        top_left = (top_left[0] + w_cc//3, top_left[1])
         bottom_right = (top_left[0] + template_w, top_left[1] + template_h)
 
         logos_prob.append({
@@ -476,6 +477,7 @@ print("Improved Contours again count: {}".format(len(contours)))
 showimg(v2_numbers_part)
 
 config = ("-l eng --oem 1 --psm 7")
+# config = ("-l eng --oem 1 --psm 7")
 text = pytesseract.image_to_string(numbers_part, config=config)
 validate_cc = text.replace(' ', '')
 print(text)
