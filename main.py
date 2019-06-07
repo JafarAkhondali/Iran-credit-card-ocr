@@ -5,6 +5,8 @@ from collections import defaultdict
 import pytesseract
 
 
+# img_name = './dataset/saderat3.jpg'
+# img_name = './dataset/saderat2.jpg'
 # img_name = './dataset/saderat1.jpg'
 # img_name = './dataset/bgwm.jpg'
 
@@ -14,11 +16,16 @@ import pytesseract
 # img_name = './dataset/meli_persm.jpg'
 # img_name = './dataset/meli_rotm.jpg'
 
+
 #TODO: All of these are melat, so we have to specify ROI for Mellat
 
 # img_name = './dataset/melatm3.jpg' #TODO CC
+# img_name = './dataset/melatm.jpg' #TODO CC ( Works)
 # img_name = './dataset/melatm.jpg' #TODO CC
-# img_name = './dataset/melatm.jpg' #TODO CC
+img_name = './dataset/mininoise2.jpg'
+
+
+# img_name = './dataset/noise3.jpg'
 
 
 class LOGO:
@@ -197,9 +204,9 @@ def showimg(img):
 
 
 img = cv2.imread(img_name)
-
+image_height, image_width, _ = img.shape
+total_count_of_pixels = image_height * image_width
 showimg(img)
-
 # low_k = 1  # slider start position
 # high_k = 21  # maximal slider position
 cv2.namedWindow('Image')
@@ -207,15 +214,53 @@ cv2.namedWindow('Image')
 # on_change()
 blured_img = bblur(img, 3)
 
+# showimg(blured_img)
 ggray = cv2.cvtColor(blured_img, cv2.COLOR_BGR2GRAY)
 th, dif = cv2.threshold(ggray, 190, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
 showimg(dif)
-kernel = np.ones((3, 3), np.uint8)
+count_ones = cv2.countNonZero(dif)
 
-dif = cv2.morphologyEx(dif, cv2.MORPH_OPEN, kernel, iterations=3)
+# This is so important!
+# What matters is that background should be in different color than cart
+# And OTSU threshhold method will handle that, but sometimes cart turns into black instead of white
+# We have to invert colors in threshold if this happens
+
+# IF pixels are mostly white
+if total_count_of_pixels//2 < count_ones:
+    print("Inverting image")
+    dif = cv2.bitwise_not(dif)
+    showimg(dif)
+
+kernel = np.ones((2, 2), np.uint8)
+
+#
+dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=5)
 showimg(dif)
-# dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, kernel, iterations=10)
+
+dif = cv2.erode(dif, np.ones((3, 3), np.uint8), iterations=3)
+showimg(dif)
+
+dif = cv2.morphologyEx(dif, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=4)
+showimg(dif)
+
+dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=10)
+showimg(dif)
+
+dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8), iterations=5)
+showimg(dif)
+
+# dif = cv2.morphologyEx(dif, cv2.MORPH_OPEN, np.ones((4, 4), np.uint8), iterations=5)
 # showimg(dif)
+#
+# dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((4, 4), np.uint8), iterations=5)
+# showimg(dif)
+#
+# dif = cv2.morphologyEx(dif, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8), iterations=3)
+# showimg(dif)
+#
+# dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8), iterations=3)
+# showimg(dif)
+
 # dif = cv2.morphologyEx(dif, cv2.MORPH_OPEN, kernel, iterations=3)
 # showimg(dif)
 """
@@ -261,10 +306,10 @@ showimg(dif)
 """
 # img_gray = cv2.cvtColor(dif, cv2.COLOR_BGR2GRAY)
 
-dif = cv2.morphologyEx(dif, cv2.MORPH_RECT, np.ones((7, 7), np.uint8))
-showimg(dif)
-dif = cv2.morphologyEx(dif, cv2.MORPH_CROSS, np.ones((3, 3), np.uint8), iterations=10)
-showimg(dif)
+# dif = cv2.morphologyEx(dif, cv2.MORPH_RECT, np.ones((7, 7), np.uint8))
+# showimg(dif)
+# dif = cv2.morphologyEx(dif, cv2.MORPH_CROSS, np.ones((3, 3), np.uint8), iterations=10)
+# showimg(dif)
 edged_img = cv2.Canny(dif, 100, 100, 3)
 showimg(edged_img)
 countedges = cv2.countNonZero(edged_img)
@@ -277,13 +322,13 @@ countedges = cv2.countNonZero(edged_img)
 # edged_img= cv2.morphologyEx(edged_img, cv2.MORPH_CLOSE, kernel)
 # showimg(edged_img)
 
-edged_img = cv2.dilate(edged_img, np.ones((3, 3), np.uint8), iterations=1)
+edged_img = cv2.dilate(edged_img, np.ones((2, 2), np.uint8), iterations=1)
 showimg(edged_img)
 
 # edged_img = cv2.morphologyEx(edged_img, cv2.MORPH_TOPHAT, kernel)
 # showimg(edged_img)
 
-lines = cv2.HoughLines(edged_img, 1, math.pi / 180, 60, 15, 10)
+
 # lines = cv2.HoughLinesP(edged_img, 1, math.pi / 180, 100, 15, 10)
 
 # img_visual_lines = np.copy(img)
@@ -307,34 +352,51 @@ lines = cv2.HoughLines(edged_img, 1, math.pi / 180, 60, 15, 10)
 #                 continue
 #             corners.append(pt)
 
-segmented = segment_by_angle_kmeans(lines)
-intersections = segmented_intersections(segmented)
-print(len(intersections))
+hough_threshhold = 60
+while True:
+    print("Trying %s for hough threshhold" % hough_threshhold)
+    lines = cv2.HoughLines(edged_img, 1, math.pi / 180, hough_threshhold, 15, 10)
+    print("Count of lines found: %s" % len(lines))
+
+    if hough_threshhold < 10:
+        print("Sorry, not today :(")
+        break
+    if len(lines) < 4:
+        hough_threshhold -= 5
+        continue
+    else:
+        segmented = segment_by_angle_kmeans(lines)
+        intersections = segmented_intersections(segmented)
+        print(len(intersections))
+        break
+
+
 corners = []
-near_thresh = 100
-if countedges > 3000:
-    near_thresh = 300
-elif countedges > 2000:
-    near_thresh = 200
-elif countedges > 1000:
-    near_thresh = 150
+near_thresh = image_height//3
 
-print('----')
-print(near_thresh)
-print(countedges)
+while True:
+    print("Finding corners with threshold %s" % near_thresh)
+    for i in intersections:
+        if i[0][0] < 0 or i[0][1] < 0:
+            continue
+        any_center_nearby = False
+        for c in corners:
 
-for i in intersections:
-    if i[0][0] < 0 or i[0][1] < 0:
-        continue
-    any_center_nearby = False
-    for c in corners:
+            if near_point(i[0], c, near_thresh):
+                any_center_nearby = True
+                break
+        if any_center_nearby:
+            continue
+        corners.append(tuple(i[0]))
 
-        if near_point(i[0], c, near_thresh):
-            any_center_nearby = True
-            break
-    if any_center_nearby:
-        continue
-    corners.append(tuple(i[0]))
+    print("Current len of corners is %s " % len(corners))
+    if near_thresh <= 0:
+        break
+    elif len(corners) < 4:
+        near_thresh -= 50
+        corners.clear()
+    else:
+        break
 
 print("Len of corners: {}".format(len(corners)))
 
@@ -344,7 +406,7 @@ if len(corners) < 4:
 corners = corners[:4]  # Take top four possibles, because it's sorted
 visualized_corners = np.copy(img)
 for c in corners:
-    cv2.circle(visualized_corners, c, 5, (255, 0, 0))
+    cv2.circle(visualized_corners, c, 5, (230, 50, 180), thickness=5)
 showimg(visualized_corners)
 
 corners_center = [0, 0]
@@ -481,6 +543,7 @@ for c in contours:
 print("Improved Contours again count: {}".format(len(contours)))
 showimg(v2_numbers_part)
 
+showimg(numbers_part)
 config = ("-l eng --oem 1 --psm 7")
 # config = ("-l eng --oem 1 --psm 7")
 text = pytesseract.image_to_string(numbers_part, config=config)
