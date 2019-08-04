@@ -1,19 +1,25 @@
+from random import randrange
+
 import cv2
 import math
 import numpy as np
 from collections import defaultdict
 import pytesseract
 
+# TODO:
+#  1. Separate each 4digit group into a same group
+#  2. Split each digit in group
+#  3. Add resized logo banks
 
 # img_name = './dataset/saderat3.jpg'
-# img_name = './dataset/saderat2.jpg'
+img_name = './dataset/saderat2.jpg'
 # img_name = './dataset/saderat1.jpg'
 # img_name = './dataset/bgwm.jpg'
 
 # img_name = './dataset/keshm.jpg'
 # img_name = './dataset/melim.jpg'
 # img_name = './dataset/melatm2.jpg'
-# img_name = './dataset/meli_persm.jpg'
+#img_name = './dataset/meli_persm.jpg' # OK
 # img_name = './dataset/meli_rotm.jpg'
 
 
@@ -22,7 +28,7 @@ import pytesseract
 # img_name = './dataset/melatm3.jpg' #TODO CC
 # img_name = './dataset/melatm.jpg' #TODO CC ( Works)
 # img_name = './dataset/melatm.jpg' #TODO CC
-img_name = './dataset/mininoise2.jpg'
+# img_name = './dataset/mininoise2.jpg'
 
 
 # img_name = './dataset/noise3.jpg'
@@ -34,6 +40,10 @@ class LOGO:
             'logo': cv2.imread('logos/tejarat.png', 0),
             'name': 'TEJARAT',
             'persian_name': 'TEJARAT',
+            'numPos': {
+                'from': (104, 288,),
+                'to': (912, 440,)
+            }
         },
         'MELLI': {
             'logo': cv2.imread('logos/melli.png', 0),
@@ -195,11 +205,13 @@ def bblur(img, size):
 
 def showimg(img):
     shape = img.shape
+    print("Shape: {}".format(shape))
     height = shape[0]
     width = shape[1]
 
-    imgS = cv2.resize(img, (width, height))
-    cv2.imshow("Image", imgS)
+    # imgS = cv2.resize(img, (width, height))
+    # cv2.imshow("Image", imgS)
+    cv2.imshow("Image", img)
     k = cv2.waitKey(0) & 0xFF
 
 
@@ -233,18 +245,18 @@ if total_count_of_pixels//2 < count_ones:
 
 kernel = np.ones((2, 2), np.uint8)
 
-#
+print(1)
 dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=5)
-showimg(dif)
-
+# showimg(dif)
+print(2)
 dif = cv2.erode(dif, np.ones((3, 3), np.uint8), iterations=3)
-showimg(dif)
-
+# showimg(dif)
+print(1)
 dif = cv2.morphologyEx(dif, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=4)
-showimg(dif)
+# showimg(dif)
 
 dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=10)
-showimg(dif)
+# showimg(dif)
 
 dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8), iterations=5)
 showimg(dif)
@@ -419,8 +431,8 @@ corners_center[1] /= len(corners)
 corners = sortCorners(corners, corners_center)
 
 # Wrap perspective image
-cc_width = 250
-cc_height = 150
+cc_width = 1000
+cc_height = 600
 cc_image = np.zeros((cc_height, cc_width, 3), np.uint8)
 mapped_corners = [
     (0, 0),
@@ -477,13 +489,36 @@ def find_bank(cc_image):
 bank_name = find_bank(cc_image)
 print(bank_name)
 
+
+x1, y1, x2, y2 = (280, 540, 40, -40)
+have_numPost = False
+if LOGO.BANKS[bank_name]['numPos']:
+    x1, y1 = LOGO.BANKS[bank_name]['numPos']['from']
+    x2, y2 = LOGO.BANKS[bank_name]['numPos']['to']
+    have_numPost = True
 # We are only interested on part of cart that contains number,
 # on image with height of 150, the numbers should be on 80 - 125 range of H
-numbers_part = cc_image[80:125, 10:-10]
+# numbers_part = cc_image[80:125, 10:-10]
+numbers_part = cc_image[y1:y2, x1:x2]
 # 80 125
 
+
+# img_yuv = cv2.cvtColor(numbers_part, cv2.COLOR_BGR2YUV)
+# equalize the histogram of the Y channel
+# img_yuv[:,:,0] = cv2.equalizeHist(img_yuv[:,:,0])
+
+# convert the YUV image back to RGB format
+# numbers_part = cv2.cvtColor(img_yuv, cv2.COLOR_YUV2BGR)
 hsvNumber = cv2.cvtColor(numbers_part, cv2.COLOR_BGR2HSV)
-mask = cv2.inRange(hsvNumber, (0, 0, 0), (180, 255, 70))
+
+
+
+# hsvNumber = cv2.cvtColor(numbers_part, cv2.COLOR_BGR2GRAY)
+# clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+# mask = clahe.apply(hsvNumber)
+
+mask = cv2.inRange(hsvNumber, (0, 0, 0), (200, 255, 120))
+# mask = cv2.inRange(hsvNumber, (0, 0, 0), (180, 255, 120))
 # mask = cv2.cvtColor(numbers_part, cv2.COLOR_BGR2HSV)
 #
 # lower_red = np.array([0, 0, 0])
@@ -492,6 +527,8 @@ mask = cv2.inRange(hsvNumber, (0, 0, 0), (180, 255, 70))
 # lower_red = np.array([0, 0, 0])
 # upper_red = np.array([100, 100, 100])
 # mask = cv2.inRange(numbers_part, lower_red, upper_red)
+
+print("Showing mask")
 showimg(mask)
 
 # contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
@@ -512,10 +549,10 @@ y_array = []
 
 for c in contours:
     carea = cv2.contourArea(c)
-    if carea >= 3 * 6 or carea == 0.0: # Sometimes carea is zero, contiue using rects
+    if carea >= 12 * 24 or carea == 0.0: # Sometimes carea is zero, contiue using rects
         [x, y, w, h] = cv2.boundingRect(c)
-        if h > 3 and w > 2:
-            if w * h >= 3 * 6:
+        if h > 12 and w > 8:
+            if w * h >= 12 * 24:
                 x_array.append(x + (w // 2))
                 y_array.append(y + (h // 2))
                 contours_rect.append([x, y, w, h])
@@ -528,22 +565,42 @@ print("Number of improved contours: {}".format(len(realcontours)))
 print(width_median)
 print(height_median)
 
-max_height = height_median + 14
-min_height = height_median - 14
+max_height = height_median + 44
+min_height = height_median - 44
 if min_height < 0:
     min_height = 0
 
+# cropped_mask = None
+# if len(contours) <= 1:
 cropped_mask = mask[min_height:max_height, :]
+# cropped_mask = mask[min_height:max_height, :]
 numbers_part = numbers_part[min_height:max_height, :]
+# numbers_part = numbers_part[min_height:max_height, :]
+# for i in range()
+# numbers_part
 
-contours, _ = cv2.findContours(cropped_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-v2_numbers_part = np.copy(numbers_part)
-for c in contours:
-    cv2.drawContours(v2_numbers_part, [c], 0, (255, 0, 0), 1)
-print("Improved Contours again count: {}".format(len(contours)))
-showimg(v2_numbers_part)
+# contours, _ = cv2.findContours(cropped_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+if len(contours) >= 1:
+    v2_numbers_part = np.copy(numbers_part)
+    for c in contours:
+        cv2.drawContours(v2_numbers_part, [c], 0, (randrange(30, 250), randrange(30, 250), randrange(30, 250)), 1)
+#         # cv2.drawContours(v2_numbers_part, [c], 0, (255, 0, 0), 1)
+    print("Improved Contours again count: {}".format(len(contours)))
+    showimg(v2_numbers_part)
 
-showimg(numbers_part)
+
+mm = cv2.cvtColor(np.copy(numbers_part), cv2.COLOR_BGR2HSV)
+mask = cv2.inRange(mm, (0, 0, 0), (200, 255, 100))
+showimg(mask)
+
+
+
+
+
+
+
+
+
 config = ("-l eng --oem 1 --psm 7")
 # config = ("-l eng --oem 1 --psm 7")
 text = pytesseract.image_to_string(numbers_part, config=config)
@@ -557,6 +614,7 @@ else:
     print("Let's select only numbers")
     digits = [s for s in validate_cc if s.isdigit()]
     digits = ''.join(digits)
+    print(digits)
     if digits.isnumeric() and len(digits) == 16:
         print("CC Looks valid")
         print("CC Number: " + digits)
