@@ -6,34 +6,23 @@ import numpy as np
 from collections import defaultdict
 import pytesseract
 
-# TODO:
-#  1. Separate each 4digit group into a same group
-#  2. Split each digit in group
-#  3. Add resized logo banks
-
 # img_name = './dataset/saderat3.jpg'
-img_name = './dataset/saderat2.jpg'
-# img_name = './dataset/saderat1.jpg'
+# img_name = './dataset/saderat2.jpg'
+# img_name = './dataset/saderat1.jpg' #TODO LAST digit trim fails
 # img_name = './dataset/bgwm.jpg'
-
-# img_name = './dataset/keshm.jpg'
+img_name = './dataset/keshm.jpg'
 # img_name = './dataset/melim.jpg'
 # img_name = './dataset/melatm2.jpg'
-#img_name = './dataset/meli_persm.jpg' # OK
+# img_name = './dataset/meli_persm.jpg' # OK
 # img_name = './dataset/meli_rotm.jpg'
-
-
-#TODO: All of these are melat, so we have to specify ROI for Mellat
 
 # img_name = './dataset/melatm3.jpg' #TODO CC
 # img_name = './dataset/melatm.jpg' #TODO CC ( Works)
 # img_name = './dataset/melatm.jpg' #TODO CC
 # img_name = './dataset/mininoise2.jpg'
-
-
 # img_name = './dataset/noise3.jpg'
 
-
+base_vue = 120
 class LOGO:
     BANKS = {
         'TEJARAT': {
@@ -49,16 +38,28 @@ class LOGO:
             'logo': cv2.imread('logos/melli.png', 0),
             'name': 'MELLI',
             'persian_name': 'MELLI',
+            'numPos': {
+                'from': (90, 343,),
+                'to': (886, 443,)
+            }
         },
         'SADERAT': {
             'logo': cv2.imread('logos/saderat.png', 0),
             'name': 'SADERAT',
             'persian_name': 'SADERAT',
+            'numPos': {
+                'from': (95, 306,),
+                'to': (874, 408,)
+            }
         },
         'KESHAVARZI': {
             'logo': cv2.imread('logos/keshavarzi.png', 0),
             'name': 'KESHAVARZI',
             'persian_name': 'KESHAVARZI',
+            'numPos': {
+                'from': (52, 385),
+                'to': (918, 465,)
+            }
         },
     }
 
@@ -203,9 +204,79 @@ def bblur(img, size):
 #     showimg(median)
 
 
+
+def trim(im, left=True, right=True, top=True, down=True):
+    img = np.copy(im)
+    img = cv2.morphologyEx(img, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=1)
+    l = t = 0
+    b, r = img.shape
+    b -= 1
+    r -= 1
+    thresh = 1
+    if left:
+        img_h, img_w = img.shape
+        for i in range(0, img_w, 1):
+            if np.count_nonzero(img[:, i]) > thresh :
+                l = i - 1
+                break
+    if right:
+        img_h, img_w = img.shape
+        for i in range(img_w-1, 0, -1):
+            x = np.count_nonzero(img[:, i])
+            if x > thresh:
+                r = i + 1
+                break
+    if top:
+        img_h, img_w = img.shape
+        for i in range(0, img_h, 1):
+            if np.count_nonzero(img[i, :]) > thresh :
+                t = i - 1
+                break
+    if down:
+        img_h, img_w = img.shape
+        for i in range(img_h-1, 0, -1):
+            if np.count_nonzero(img[i, :]) > thresh:
+                b = i + 1
+                break
+
+    if t < 0:
+        t = 0
+    if l < 0:
+        l = 0
+    if r >= img.shape[1]:
+        r = img.shape[1] -1
+    if b >= img.shape[0]:
+        b = img.shape[0] - 1
+    return img[t:b, l:r]
+
+
+def split_horizontal(img, start, end):
+    print("Start {} End {}".format(start, end))
+    im = np.copy(img)
+    _, part_width = im.shape
+    search_range = 5
+
+    search_range_start = end+search_range
+    if search_range_start >= part_width:
+        search_range_start = part_width-1
+
+    min_index = search_range_start
+    min_val = np.count_nonzero(img[:, search_range_start])
+    search_range_to = end-search_range
+    for i in range(search_range_start, search_range_to, -1):
+        lmin = np.count_nonzero(img[:, i])
+        if lmin < min_val:
+            min_val = lmin
+            min_index = i
+
+    return im[:, start:min_index], min_index
+
+
+    
+
+
 def showimg(img):
     shape = img.shape
-    print("Shape: {}".format(shape))
     height = shape[0]
     width = shape[1]
 
@@ -226,8 +297,9 @@ cv2.namedWindow('Image')
 # on_change()
 blured_img = bblur(img, 3)
 
-# showimg(blured_img)
+
 ggray = cv2.cvtColor(blured_img, cv2.COLOR_BGR2GRAY)
+# ggray = cv2.equalizeHist(ggray)
 th, dif = cv2.threshold(ggray, 190, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
 showimg(dif)
 count_ones = cv2.countNonZero(dif)
@@ -240,6 +312,7 @@ count_ones = cv2.countNonZero(dif)
 # IF pixels are mostly white
 if total_count_of_pixels//2 < count_ones:
     print("Inverting image")
+    base_vue = 150
     dif = cv2.bitwise_not(dif)
     showimg(dif)
 
@@ -247,32 +320,32 @@ kernel = np.ones((2, 2), np.uint8)
 
 print(1)
 dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=5)
-# showimg(dif)
+showimg(dif)
 print(2)
 dif = cv2.erode(dif, np.ones((3, 3), np.uint8), iterations=3)
-# showimg(dif)
+showimg(dif)
 print(1)
 dif = cv2.morphologyEx(dif, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=4)
-# showimg(dif)
+showimg(dif)
 
 dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=10)
-# showimg(dif)
+showimg(dif)
 
 dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8), iterations=5)
 showimg(dif)
-
+#
 # dif = cv2.morphologyEx(dif, cv2.MORPH_OPEN, np.ones((4, 4), np.uint8), iterations=5)
-# showimg(dif)
-#
+# # showimg(dif)
+# #
 # dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((4, 4), np.uint8), iterations=5)
-# showimg(dif)
-#
+# # showimg(dif)
+# #
 # dif = cv2.morphologyEx(dif, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8), iterations=3)
-# showimg(dif)
-#
+# # showimg(dif)
+# #
 # dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8), iterations=3)
-# showimg(dif)
-
+# # showimg(dif)
+#
 # dif = cv2.morphologyEx(dif, cv2.MORPH_OPEN, kernel, iterations=3)
 # showimg(dif)
 """
@@ -502,7 +575,6 @@ if LOGO.BANKS[bank_name]['numPos']:
 numbers_part = cc_image[y1:y2, x1:x2]
 # 80 125
 
-
 # img_yuv = cv2.cvtColor(numbers_part, cv2.COLOR_BGR2YUV)
 # equalize the histogram of the Y channel
 # img_yuv[:,:,0] = cv2.equalizeHist(img_yuv[:,:,0])
@@ -511,13 +583,18 @@ numbers_part = cc_image[y1:y2, x1:x2]
 # numbers_part = cv2.cvtColor(img_yuv, cv2.COLOR_YUV2BGR)
 hsvNumber = cv2.cvtColor(numbers_part, cv2.COLOR_BGR2HSV)
 
-
-
 # hsvNumber = cv2.cvtColor(numbers_part, cv2.COLOR_BGR2GRAY)
 # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
 # mask = clahe.apply(hsvNumber)
 
-mask = cv2.inRange(hsvNumber, (0, 0, 0), (200, 255, 120))
+
+while True:
+    mask = cv2.inRange(hsvNumber, (0, 0, 0), (200, 255, base_vue))
+    if np.count_nonzero(mask) < ( (hsvNumber.shape[0] * hsvNumber.shape[1] * 4)/10 ):
+        break
+    base_vue -= 20
+    print("Too DARK!")
+
 # mask = cv2.inRange(hsvNumber, (0, 0, 0), (180, 255, 120))
 # mask = cv2.cvtColor(numbers_part, cv2.COLOR_BGR2HSV)
 #
@@ -528,72 +605,117 @@ mask = cv2.inRange(hsvNumber, (0, 0, 0), (200, 255, 120))
 # upper_red = np.array([100, 100, 100])
 # mask = cv2.inRange(numbers_part, lower_red, upper_red)
 
-print("Showing mask")
-showimg(mask)
+# print("Showing mask")
+# showimg(mask)
 
 # contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1)
 
 print("Number of contours: {}".format(len(contours)))
 
-v_numbers_part = np.copy(numbers_part)
-for c in contours:
-    # cv2.drawContours(v_numbers_part, [c], 0, (randrange(30, 250), randrange(30, 250), randrange(30, 250)), 1)
-    cv2.drawContours(v_numbers_part, [c], 0, (255, 255, 255), 1)
-showimg(v_numbers_part)
-
+if len(contours) > 1:
+    v_numbers_part = np.copy(numbers_part)
+    for c in contours:
+        # cv2.drawContours(v_numbers_part, [c], 0, (randrange(30, 250), randrange(30, 250), randrange(30, 250)), 1)
+        cv2.drawContours(v_numbers_part, [c], 0, (255, 255, 255), 1)
+    showimg(v_numbers_part)
+showimg(numbers_part)
 realcontours = []
 contours_rect = []
 x_array = []
 y_array = []
 
-for c in contours:
-    carea = cv2.contourArea(c)
-    if carea >= 12 * 24 or carea == 0.0: # Sometimes carea is zero, contiue using rects
-        [x, y, w, h] = cv2.boundingRect(c)
-        if h > 12 and w > 8:
-            if w * h >= 12 * 24:
-                x_array.append(x + (w // 2))
-                y_array.append(y + (h // 2))
-                contours_rect.append([x, y, w, h])
-                realcontours.append(c)
+if len(contours) > 1:
+    for c in contours:
+        carea = cv2.contourArea(c)
+        if carea >= 12 * 24 or carea == 0.0: # Sometimes carea is zero, contiue using rects
+            [x, y, w, h] = cv2.boundingRect(c)
+            if h > 12 and w > 8:
+                if w * h >= 12 * 24:
+                    x_array.append(x + (w // 2))
+                    y_array.append(y + (h // 2))
+                    contours_rect.append([x, y, w, h])
+                    realcontours.append(c)
 
-width_median = int(np.median(x_array))
-height_median = int(np.median(y_array))
+    width_median = int(np.median(x_array))
+    height_median = int(np.median(y_array))
 
-print("Number of improved contours: {}".format(len(realcontours)))
-print(width_median)
-print(height_median)
+    print("Number of improved contours: {}".format(len(realcontours)))
 
-max_height = height_median + 44
-min_height = height_median - 44
-if min_height < 0:
-    min_height = 0
+    max_height = height_median + 54
+    min_height = height_median - 54
 
-# cropped_mask = None
-# if len(contours) <= 1:
-cropped_mask = mask[min_height:max_height, :]
-# cropped_mask = mask[min_height:max_height, :]
-numbers_part = numbers_part[min_height:max_height, :]
+    print(max_height)
+    print(min_height)
+    print('----------')
+
+    if min_height < 0:
+        min_height = 0
+    if max_height >= numbers_part.shape[0]:
+        max_height = numbers_part.shape[0]-1
+
+    print(max_height)
+    print(min_height)
+    # cropped_mask = None
+    # if len(contours) <= 1:
+    cropped_mask = mask[min_height:max_height, :]
+    # cropped_mask = mask[min_height:max_height, :]
+    numbers_part = numbers_part[min_height:max_height, :]
 # numbers_part = numbers_part[min_height:max_height, :]
 # for i in range()
 # numbers_part
 
 # contours, _ = cv2.findContours(cropped_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-if len(contours) >= 1:
-    v2_numbers_part = np.copy(numbers_part)
-    for c in contours:
-        cv2.drawContours(v2_numbers_part, [c], 0, (randrange(30, 250), randrange(30, 250), randrange(30, 250)), 1)
-#         # cv2.drawContours(v2_numbers_part, [c], 0, (255, 0, 0), 1)
-    print("Improved Contours again count: {}".format(len(contours)))
-    showimg(v2_numbers_part)
+# if len(contours) >= 1:
+#     v2_numbers_part = np.copy(numbers_part)
+#     for c in contours:
+#         cv2.drawContours(v2_numbers_part, [c], 0, (randrange(30, 250), randrange(30, 250), randrange(30, 250)), 1)
+# #         # cv2.drawContours(v2_numbers_part, [c], 0, (255, 0, 0), 1)
+#     print("Improved Contours again count: {}".format(len(contours)))
+#     showimg(v2_numbers_part)
 
 
-mm = cv2.cvtColor(np.copy(numbers_part), cv2.COLOR_BGR2HSV)
-mask = cv2.inRange(mm, (0, 0, 0), (200, 255, 100))
-showimg(mask)
+hsv_number_part_final = cv2.cvtColor(np.copy(numbers_part), cv2.COLOR_BGR2HSV)
+bw_number_part = cv2.inRange(hsv_number_part_final, (0, 0, 0), (200, 255, base_vue))
 
+############# Exctract digits #############
+# Here we will crop photo from left and right until we find any white pixel, that will be our ROI
+showimg(bw_number_part)
+bw_number_part = trim(bw_number_part)
 
+showimg(bw_number_part)
+nums_h, nums_w = bw_number_part.shape
+
+# Divide data into 4 partitions
+# parts = np.array_split(bw_number_part, 4, axis=1)
+
+parts_height, parts_width = bw_number_part.shape
+part_width = (parts_width - 1) // 4
+p1, next = split_horizontal(bw_number_part, 0, part_width )
+p2, next = split_horizontal(bw_number_part, next, next + part_width)
+p3, next = split_horizontal(bw_number_part, next, next + part_width)
+p4, next = split_horizontal(bw_number_part, next, parts_width)
+
+parts = [p1, p2, p3, p4]
+
+for i, part in enumerate(parts):
+    print("Showing part {}".format(i))
+    part = trim(part)
+    showimg(part)
+    digit_group_height, digit_group_width = part.shape
+    digit_width = (digit_group_width-1) // 4
+    d1, next = split_horizontal(part, 0, digit_width)
+    showimg(d1)
+    showimg(trim(d1))
+    d2, next = split_horizontal(part, next, next + digit_width)
+    showimg(d2)
+    showimg(trim(d2))
+    d3, next = split_horizontal(part, next, next + digit_width)
+    showimg(d3)
+    showimg(trim(d3))
+    d4, next = split_horizontal(part, next, digit_group_width)
+    showimg(d4)
+    showimg(trim(d4))
 
 
 
