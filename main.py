@@ -5,12 +5,19 @@ import math
 import numpy as np
 from collections import defaultdict
 import pytesseract
+import random
+from skimage.feature import hog
+from skimage import color
+from sklearn.externals import joblib
+
+knn = joblib.load('knn_model.pkl')
+
 
 # img_name = './dataset/saderat3.jpg'
-# img_name = './dataset/saderat2.jpg'
+img_name = './dataset/saderat2.jpg'
 # img_name = './dataset/saderat1.jpg' #TODO LAST digit trim fails
 # img_name = './dataset/bgwm.jpg'
-img_name = './dataset/keshm.jpg'
+# img_name = './dataset/keshm.jpg'
 # img_name = './dataset/melim.jpg'
 # img_name = './dataset/melatm2.jpg'
 # img_name = './dataset/meli_persm.jpg' # OK
@@ -19,10 +26,18 @@ img_name = './dataset/keshm.jpg'
 # img_name = './dataset/melatm3.jpg' #TODO CC
 # img_name = './dataset/melatm.jpg' #TODO CC ( Works)
 # img_name = './dataset/melatm.jpg' #TODO CC
-# img_name = './dataset/mininoise2.jpg'
+# img_name = './dataset/mininoise2.jpg' #OOPS
 # img_name = './dataset/noise3.jpg'
+# img_name = './dataset/Credit/meli1.jpg'
+# img_name = './dataset/Credit/meli3.jpg'
+# img_name = './dataset/Credit/meli4.jpg'
+# img_name = './dataset/Credit/sader1.jpg' #DarkIMage FAILED
+# img_name = './dataset/Credit/sader2.jpg' #DarkIMage
+# img_name = './dataset/Credit/melat1.jpg'
 
 base_vue = 120
+
+
 class LOGO:
     BANKS = {
         'TEJARAT': {
@@ -62,6 +77,25 @@ class LOGO:
             }
         },
     }
+
+
+
+def predict_knn(df):
+    predict = knn.predict(df.reshape(1,-1))[0]
+    predict_proba = knn.predict_proba(df.reshape(1,-1))
+    return predict, predict_proba[0][predict]
+
+def inputdata(inputimage):
+    (H, hogImage) = hog(
+        inputimage,
+        orientations=8,
+        pixels_per_cell=(10, 10),
+        cells_per_block=(7, 5),
+        transform_sqrt=True,
+        block_norm="L1",
+        visualize=True
+    )
+    return predict_knn(H)
 
 
 def segment_by_angle_kmeans(lines, k=2, **kwargs):
@@ -203,38 +237,47 @@ def bblur(img, size):
 #     median = blur(img_gray, ksize)
 #     showimg(median)
 
+def teseract_ocr(img):
+    config = ("-l eng --oem 1 --psm 7")
+    text = pytesseract.image_to_string(img, config=config)
+    return text
+
+def try_ocr(img):
+    img_copy = np.copy(img)
+    img_copy = cv2.resize(img_copy, (50, 70))
+    classify = inputdata(img_copy)
+    teser_result = teseract_ocr(img_copy)
+    print("Classified as [%s] with our method" % (classify[0]))
+    print("Classified as [%s] with Teseract" % (teser_result))
+    return str(classify[0])
 
 
-def trim(im, left=True, right=True, top=True, down=True):
+def trim(im, left=True, right=True, top=True, down=True, open=True):
     img = np.copy(im)
-    img = cv2.morphologyEx(img, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=1)
+    img = cv2.morphologyEx(im, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8), iterations=1)
     l = t = 0
     b, r = img.shape
-    b -= 1
-    r -= 1
+
     thresh = 1
+    img_h, img_w = img.shape
     if left:
-        img_h, img_w = img.shape
         for i in range(0, img_w, 1):
-            if np.count_nonzero(img[:, i]) > thresh :
+            if np.count_nonzero(img[:, i]) > thresh:
                 l = i - 1
                 break
     if right:
-        img_h, img_w = img.shape
-        for i in range(img_w-1, 0, -1):
+        for i in range(img_w - 1, -1, -1):
             x = np.count_nonzero(img[:, i])
             if x > thresh:
-                r = i + 1
+                r = i + 2
                 break
     if top:
-        img_h, img_w = img.shape
         for i in range(0, img_h, 1):
-            if np.count_nonzero(img[i, :]) > thresh :
+            if np.count_nonzero(img[i, :]) > thresh:
                 t = i - 1
                 break
     if down:
-        img_h, img_w = img.shape
-        for i in range(img_h-1, 0, -1):
+        for i in range(img_h - 1, 0, -1):
             if np.count_nonzero(img[i, :]) > thresh:
                 b = i + 1
                 break
@@ -244,36 +287,32 @@ def trim(im, left=True, right=True, top=True, down=True):
     if l < 0:
         l = 0
     if r >= img.shape[1]:
-        r = img.shape[1] -1
+        r = img.shape[1] - 1
     if b >= img.shape[0]:
         b = img.shape[0] - 1
     return img[t:b, l:r]
 
 
 def split_horizontal(img, start, end):
-    print("Start {} End {}".format(start, end))
+    # print("Start {} End {}".format(start, end))
     im = np.copy(img)
     _, part_width = im.shape
-    search_range = 5
-
-    search_range_start = end+search_range
+    im = cv2.morphologyEx(im, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=1)
+    search_range = 3
+    search_range_start = end + search_range
     if search_range_start >= part_width:
-        search_range_start = part_width-1
+        search_range_start = part_width - 1
 
     min_index = search_range_start
     min_val = np.count_nonzero(img[:, search_range_start])
-    search_range_to = end-search_range
+    search_range_to = end - search_range + 1
     for i in range(search_range_start, search_range_to, -1):
         lmin = np.count_nonzero(img[:, i])
         if lmin < min_val:
             min_val = lmin
             min_index = i
 
-    return im[:, start:min_index], min_index
-
-
-    
-
+    return im[:, start:min_index], min_index + 1
 
 def showimg(img):
     shape = img.shape
@@ -297,10 +336,9 @@ cv2.namedWindow('Image')
 # on_change()
 blured_img = bblur(img, 3)
 
-
 ggray = cv2.cvtColor(blured_img, cv2.COLOR_BGR2GRAY)
 # ggray = cv2.equalizeHist(ggray)
-th, dif = cv2.threshold(ggray, 190, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+th, dif = cv2.threshold(ggray, 150, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
 showimg(dif)
 count_ones = cv2.countNonZero(dif)
 
@@ -310,7 +348,7 @@ count_ones = cv2.countNonZero(dif)
 # We have to invert colors in threshold if this happens
 
 # IF pixels are mostly white
-if total_count_of_pixels//2 < count_ones:
+if total_count_of_pixels // 2 < count_ones:
     print("Inverting image")
     base_vue = 150
     dif = cv2.bitwise_not(dif)
@@ -318,13 +356,10 @@ if total_count_of_pixels//2 < count_ones:
 
 kernel = np.ones((2, 2), np.uint8)
 
-print(1)
 dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=5)
 showimg(dif)
-print(2)
 dif = cv2.erode(dif, np.ones((3, 3), np.uint8), iterations=3)
 showimg(dif)
-print(1)
 dif = cv2.morphologyEx(dif, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=4)
 showimg(dif)
 
@@ -455,9 +490,8 @@ while True:
         print(len(intersections))
         break
 
-
 corners = []
-near_thresh = image_height//3
+near_thresh = image_height // 3
 
 while True:
     print("Finding corners with threshold %s" % near_thresh)
@@ -522,7 +556,7 @@ showimg(cc_image)
 
 def find_bank(cc_image):
     h_cc, w_cc, _ = cc_image.shape
-    roi_cc_image = cc_image[: 3*h_cc // 5, w_cc // 3:]
+    roi_cc_image = cc_image[: 3 * h_cc // 5, w_cc // 3:]
     logos_prob = []
     print('Finding bank logo')
     for key, value in LOGO.BANKS.items():
@@ -532,7 +566,7 @@ def find_bank(cc_image):
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
         top_left = max_loc
         print(max_val)
-        top_left = (top_left[0] + w_cc//3, top_left[1])
+        top_left = (top_left[0] + w_cc // 3, top_left[1])
         bottom_right = (top_left[0] + template_w, top_left[1] + template_h)
 
         logos_prob.append({
@@ -550,29 +584,31 @@ def find_bank(cc_image):
             max_val = p['value']
             found_logo = p
 
-    bank = LOGO.BANKS[found_logo['bank_key']]
-    bank_name = bank['name']
-    cccopy = np.copy(cc_image)
-    cv2.rectangle(cccopy, found_logo['top_left'], found_logo['bottom_right'], 255, 2)
+    if max_val < 0.50:
+        print(" I think i have failed to find log of bank :(")
+    else:
+        bank = LOGO.BANKS[found_logo['bank_key']]
+        bank_name = bank['name']
+        cccopy = np.copy(cc_image)
+        cv2.rectangle(cccopy, found_logo['top_left'], found_logo['bottom_right'], 255, 2)
 
-    showimg(cccopy)
-    return bank_name
+        showimg(cccopy)
+        return bank_name
 
 
 bank_name = find_bank(cc_image)
 print(bank_name)
 
-
-x1, y1, x2, y2 = (280, 540, 40, -40)
+x1, y1, x2, y2 = (20, 280, -20, 540)
 have_numPost = False
-if LOGO.BANKS[bank_name]['numPos']:
+if bank_name and LOGO.BANKS[bank_name]['numPos']:
     x1, y1 = LOGO.BANKS[bank_name]['numPos']['from']
     x2, y2 = LOGO.BANKS[bank_name]['numPos']['to']
     have_numPost = True
 # We are only interested on part of cart that contains number,
 # on image with height of 150, the numbers should be on 80 - 125 range of H
 # numbers_part = cc_image[80:125, 10:-10]
-numbers_part = cc_image[y1:y2, x1:x2]
+numbers_part = cc_image[y1 - 10:y2+10, x1:x2]
 # 80 125
 
 # img_yuv = cv2.cvtColor(numbers_part, cv2.COLOR_BGR2YUV)
@@ -587,10 +623,10 @@ hsvNumber = cv2.cvtColor(numbers_part, cv2.COLOR_BGR2HSV)
 # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
 # mask = clahe.apply(hsvNumber)
 
-
 while True:
+    print("Filtering black")
     mask = cv2.inRange(hsvNumber, (0, 0, 0), (200, 255, base_vue))
-    if np.count_nonzero(mask) < ( (hsvNumber.shape[0] * hsvNumber.shape[1] * 4)/10 ):
+    if np.count_nonzero(mask) < ((hsvNumber.shape[0] * hsvNumber.shape[1] * 4) / 10):
         break
     base_vue -= 20
     print("Too DARK!")
@@ -628,7 +664,7 @@ y_array = []
 if len(contours) > 1:
     for c in contours:
         carea = cv2.contourArea(c)
-        if carea >= 12 * 24 or carea == 0.0: # Sometimes carea is zero, contiue using rects
+        if carea >= 12 * 24 or carea == 0.0:  # Sometimes carea is zero, contiue using rects
             [x, y, w, h] = cv2.boundingRect(c)
             if h > 12 and w > 8:
                 if w * h >= 12 * 24:
@@ -642,17 +678,13 @@ if len(contours) > 1:
 
     print("Number of improved contours: {}".format(len(realcontours)))
 
-    max_height = height_median + 54
-    min_height = height_median - 54
-
-    print(max_height)
-    print(min_height)
-    print('----------')
+    max_height = height_median + 30
+    min_height = height_median - 30
 
     if min_height < 0:
         min_height = 0
     if max_height >= numbers_part.shape[0]:
-        max_height = numbers_part.shape[0]-1
+        max_height = numbers_part.shape[0] - 1
 
     print(max_height)
     print(min_height)
@@ -681,7 +713,7 @@ bw_number_part = cv2.inRange(hsv_number_part_final, (0, 0, 0), (200, 255, base_v
 ############# Exctract digits #############
 # Here we will crop photo from left and right until we find any white pixel, that will be our ROI
 showimg(bw_number_part)
-bw_number_part = trim(bw_number_part)
+bw_number_part = trim(bw_number_part, open=False)
 
 showimg(bw_number_part)
 nums_h, nums_w = bw_number_part.shape
@@ -691,54 +723,65 @@ nums_h, nums_w = bw_number_part.shape
 
 parts_height, parts_width = bw_number_part.shape
 part_width = (parts_width - 1) // 4
-p1, next = split_horizontal(bw_number_part, 0, part_width )
+p1, next = split_horizontal(bw_number_part, 0, part_width)
 p2, next = split_horizontal(bw_number_part, next, next + part_width)
 p3, next = split_horizontal(bw_number_part, next, next + part_width)
-p4, next = split_horizontal(bw_number_part, next, parts_width)
+p4, next = split_horizontal(bw_number_part, next, parts_width + 2)
 
 parts = [p1, p2, p3, p4]
 
+cc = ""
 for i, part in enumerate(parts):
     print("Showing part {}".format(i))
-    part = trim(part)
+    part = trim(part, open=False)
     showimg(part)
     digit_group_height, digit_group_width = part.shape
-    digit_width = (digit_group_width-1) // 4
+    digit_width = (digit_group_width - 1) // 4
     d1, next = split_horizontal(part, 0, digit_width)
     showimg(d1)
-    showimg(trim(d1))
+    d1 = trim(d1)
+    c = try_ocr(d1)
+    cc += c
+    showimg(d1)
+
     d2, next = split_horizontal(part, next, next + digit_width)
     showimg(d2)
-    showimg(trim(d2))
+    d2 = trim(d2)
+    c = try_ocr(d2)
+    cc += c
+    showimg(d2)
+
     d3, next = split_horizontal(part, next, next + digit_width)
     showimg(d3)
-    showimg(trim(d3))
-    d4, next = split_horizontal(part, next, digit_group_width)
+    d3 = trim(d3)
+    c = try_ocr(d3)
+    cc += c
+    showimg(d3)
+
+    d4, next = split_horizontal(part, next, digit_group_width+5)
     showimg(d4)
-    showimg(trim(d4))
+    d4 = trim(d4)
+    c = try_ocr(d4)
+    cc += c + " "
+    showimg(d4)
 
-
-
-
-
-
-
-config = ("-l eng --oem 1 --psm 7")
+print("Final cc: %s" % cc)
+showimg(img)
 # config = ("-l eng --oem 1 --psm 7")
-text = pytesseract.image_to_string(numbers_part, config=config)
-validate_cc = text.replace(' ', '')
-print(text)
-if validate_cc.isnumeric() and len(validate_cc) == 16:
-    print("CC Looks valid")
-    print("CC Number: " + text)
-else:
-    print("CC Doesn't look valid :(")
-    print("Let's select only numbers")
-    digits = [s for s in validate_cc if s.isdigit()]
-    digits = ''.join(digits)
-    print(digits)
-    if digits.isnumeric() and len(digits) == 16:
-        print("CC Looks valid")
-        print("CC Number: " + digits)
+# text = pytesseract.image_to_string(numbers_part, config=config)
+# validate_cc = text.replace(' ', '')
+# print(text)
+# if validate_cc.isnumeric() and len(validate_cc) == 16:
+#     print("CC Looks valid")
+#     print("CC Number: " + text)
+# else:
+#     print("CC Doesn't look valid :(")
+#     print("Let's select only numbers")
+#     digits = [s for s in validate_cc if s.isdigit()]
+#     digits = ''.join(digits)
+#     print(digits)
+#     if digits.isnumeric() and len(digits) == 16:
+#         print("CC Looks valid")
+#         print("CC Number: " + digits)
 
 # Remove small contours. With image size reduced to that state, we want at least 6x9 size for each number
