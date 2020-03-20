@@ -6,9 +6,14 @@ import pytesseract
 import random
 from skimage.feature import hog
 from sklearn.externals import joblib
+import sys
+
+if len(sys.argv) != 2:
+    print("Usage: python {} path_of_input_image".format(sys.argv[0]))
+    exit()
 
 knn = joblib.load('knn_model.pkl')
-img_name = './examples/saderat.jpg'
+img_name = sys.argv[1]
 base_vue = 120
 
 
@@ -275,19 +280,6 @@ showimg(img)
 cv2.namedWindow('Image')
 blured_img = bblur(img, 3)
 zzz = cv2.cvtColor(blured_img, cv2.COLOR_BGR2GRAY)
-gray = np.float32(zzz)
-dst = cv2.cornerHarris(zzz, 2, 3, 0.1)
-dst = cv2.dilate(dst, None)
-ret, dst = cv2.threshold(dst, 0.01 * dst.max(), 255, 0)
-dst = np.uint8(dst)
-ret, labels, stats, centroids = cv2.connectedComponentsWithStats(dst)
-criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)
-corners = cv2.cornerSubPix(gray, np.float32(centroids), (5, 5), (-1, -1), criteria)
-visualized_corners = np.copy(blured_img)
-for c in corners:
-    y, x = c[0], c[1]
-    cv2.circle(visualized_corners, (y, x), 5, (230, 50, 180), thickness=5)
-showimg(visualized_corners)
 ggray = cv2.cvtColor(blured_img, cv2.COLOR_BGR2GRAY)
 th, dif = cv2.threshold(ggray, 150, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
 showimg(dif)
