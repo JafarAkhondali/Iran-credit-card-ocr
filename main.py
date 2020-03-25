@@ -2,19 +2,11 @@ import cv2
 import math
 import numpy as np
 from collections import defaultdict
-import pytesseract
-import random
 from skimage.feature import hog
 from sklearn.externals import joblib
 import sys
 
-if len(sys.argv) != 2:
-    print("Usage: python {} path_of_input_image".format(sys.argv[0]))
-    exit()
-
 knn = joblib.load('knn_model.pkl')
-img_name = sys.argv[1]
-base_vue = 120
 
 
 class LOGO:
@@ -179,34 +171,12 @@ def bblur(img, size):
     return cv2.bilateralFilter(img, 3 * size, 3 * size, 175)
 
 
-def teseract_ocr(img):
-    config = ("-l eng --oem 1 --psm 7")
-    text = pytesseract.image_to_string(img, config=config)
-    return text
-
-
-from time import time
-
-total = 0.0
-
-
 def try_ocr(img):
-    global total
     img_copy = np.copy(img)
     img_copy = cv2.resize(img_copy, (50, 70))
-    a = time()
     classify = inputdata(img_copy)
-    b = time()
-    print(b - a)
-    total += b - a
-    print(total)
     print('=========')
-    teser_result = teseract_ocr(img_copy)
     print("Classified as [%s] with our method" % (classify[0]))
-
-    cv2.imwrite(
-        "digits/{}-{}-classfied-as-{}.png".format(random.randint(0, 10000), random.randint(0, 10000), classify[0]),
-        img_copy)
     return str(classify[0])
 
 
@@ -273,109 +243,6 @@ def showimg(img):
     cv2.waitKey(0) & 0xFF
 
 
-img = cv2.imread(img_name)
-image_height, image_width, _ = img.shape
-total_count_of_pixels = image_height * image_width
-showimg(img)
-cv2.namedWindow('Image')
-blured_img = bblur(img, 3)
-zzz = cv2.cvtColor(blured_img, cv2.COLOR_BGR2GRAY)
-ggray = cv2.cvtColor(blured_img, cv2.COLOR_BGR2GRAY)
-th, dif = cv2.threshold(ggray, 150, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
-showimg(dif)
-count_ones = cv2.countNonZero(dif)
-if total_count_of_pixels // 2 < count_ones:
-    print("Inverting image")
-    base_vue = 150
-    dif = cv2.bitwise_not(dif)
-    showimg(dif)
-kernel = np.ones((2, 2), np.uint8)
-dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=5)
-showimg(dif)
-dif = cv2.erode(dif, np.ones((3, 3), np.uint8), iterations=3)
-showimg(dif)
-dif = cv2.morphologyEx(dif, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=4)
-showimg(dif)
-dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=10)
-showimg(dif)
-dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8), iterations=5)
-showimg(dif)
-
-edged_img = cv2.Canny(dif, 100, 100, 3)
-showimg(edged_img)
-countedges = cv2.countNonZero(edged_img)
-edged_img = cv2.dilate(edged_img, np.ones((2, 2), np.uint8), iterations=1)
-showimg(edged_img)
-hough_threshhold = 60
-while True:
-    print("Trying %s for hough threshhold" % hough_threshhold)
-    lines = cv2.HoughLines(edged_img, 1, math.pi / 180, hough_threshhold, 15, 10)
-    print("Count of lines found: %s" % len(lines))
-    if hough_threshhold < 10:
-        print("Sorry, not today :(")
-        break
-    if len(lines) < 4:
-        hough_threshhold -= 5
-        continue
-    else:
-        segmented = segment_by_angle_kmeans(lines)
-        intersections = segmented_intersections(segmented)
-        print(len(intersections))
-        break
-corners = []
-near_thresh = image_height // 3
-while True:
-    print("Finding corners with threshold %s" % near_thresh)
-    for i in intersections:
-        if i[0][0] < 0 or i[0][1] < 0:
-            continue
-        any_center_nearby = False
-        for c in corners:
-            if near_point(i[0], c, near_thresh):
-                any_center_nearby = True
-                break
-        if any_center_nearby:
-            continue
-        corners.append(tuple(i[0]))
-    print("Current len of corners is %s " % len(corners))
-    if near_thresh <= 0:
-        break
-    elif len(corners) < 4:
-        near_thresh -= 50
-        corners.clear()
-    else:
-        break
-print("Len of corners: {}".format(len(corners)))
-if len(corners) < 4:
-    print('Wrong number of corners')
-    exit(0)
-corners = corners[:4]
-visualized_corners = np.copy(img)
-for c in corners:
-    cv2.circle(visualized_corners, c, 5, (230, 50, 180), thickness=5)
-showimg(visualized_corners)
-corners_center = [0, 0]
-for c in corners:
-    corners_center[0] += c[0]
-    corners_center[1] += c[1]
-corners_center[0] /= len(corners)
-corners_center[1] /= len(corners)
-corners = sortCorners(corners, corners_center)
-cc_width = 1000
-cc_height = 600
-cc_image = np.zeros((cc_height, cc_width, 3), np.uint8)
-mapped_corners = [
-    (0, 0),
-    (cc_width, 0),
-    (cc_width, cc_height),
-    (0, cc_height)
-]
-mapped_corners = np.array(mapped_corners, dtype=np.float32)
-transmtx = cv2.getPerspectiveTransform(corners, mapped_corners)
-cc_image = cv2.warpPerspective(img, transmtx, (cc_width, cc_height))
-showimg(cc_image)
-
-
 def find_bank(cc_image):
     h_cc, w_cc, _ = cc_image.shape
     roi_cc_image = cc_image[: 3 * h_cc // 5, w_cc // 3:]
@@ -414,104 +281,208 @@ def find_bank(cc_image):
         return bank_name
 
 
-bank_name = find_bank(cc_image)
-print(bank_name)
-x1, y1, x2, y2 = (20, 280, -20, 540)
-have_numPost = False
-if bank_name and LOGO.BANKS[bank_name]['numPos']:
-    x1, y1 = LOGO.BANKS[bank_name]['numPos']['from']
-    x2, y2 = LOGO.BANKS[bank_name]['numPos']['to']
-    have_numPost = True
-numbers_part = cc_image[y1 - 10:y2 + 10, x1:x2]
-hsvNumber = cv2.cvtColor(numbers_part, cv2.COLOR_BGR2HSV)
-while True:
-    print("Filtering black")
-    mask = cv2.inRange(hsvNumber, (0, 0, 0), (200, 255, base_vue))
-    if np.count_nonzero(mask) < ((hsvNumber.shape[0] * hsvNumber.shape[1] * 4) / 10):
-        break
-    base_vue -= 20
-    print("Too DARK!")
-contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1)
-print("Number of contours: {}".format(len(contours)))
-if len(contours) > 1:
-    v_numbers_part = np.copy(numbers_part)
-    for c in contours:
-        cv2.drawContours(v_numbers_part, [c], 0, (255, 255, 255), 1)
-    showimg(v_numbers_part)
-showimg(numbers_part)
-realcontours = []
-contours_rect = []
-x_array = []
-y_array = []
-if len(contours) > 1:
-    for c in contours:
-        carea = cv2.contourArea(c)
-        if carea >= 12 * 24 or carea == 0.0:
-            [x, y, w, h] = cv2.boundingRect(c)
-            if h > 12 and w > 8:
-                if w * h >= 12 * 24:
-                    x_array.append(x + (w // 2))
-                    y_array.append(y + (h // 2))
-                    contours_rect.append([x, y, w, h])
-                    realcontours.append(c)
-    width_median = int(np.median(x_array))
-    height_median = int(np.median(y_array))
-    print("Number of improved contours: {}".format(len(realcontours)))
-    max_height = height_median + 30
-    min_height = height_median - 30
-    if min_height < 0:
-        min_height = 0
-    if max_height >= numbers_part.shape[0]:
-        max_height = numbers_part.shape[0] - 1
-    print(max_height)
-    print(min_height)
+def run(img_name):
+    img = cv2.imread(img_name)
+    image_height, image_width, _ = img.shape
+    total_count_of_pixels = image_height * image_width
+    showimg(img)
+    cv2.namedWindow('Image')
+    blured_img = bblur(img, 3)
+    base_vue = 120
+    ggray = cv2.cvtColor(blured_img, cv2.COLOR_BGR2GRAY)
+    th, dif = cv2.threshold(ggray, 150, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    showimg(dif)
+    count_ones = cv2.countNonZero(dif)
+    if total_count_of_pixels // 2 < count_ones:
+        print("Inverting image")
+        base_vue = 150
+        dif = cv2.bitwise_not(dif)
+        showimg(dif)
+    dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=5)
+    showimg(dif)
+    dif = cv2.erode(dif, np.ones((3, 3), np.uint8), iterations=3)
+    showimg(dif)
+    dif = cv2.morphologyEx(dif, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=4)
+    showimg(dif)
+    dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=10)
+    showimg(dif)
+    dif = cv2.morphologyEx(dif, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8), iterations=5)
+    showimg(dif)
 
-    cropped_mask = mask[min_height:max_height, :]
+    edged_img = cv2.Canny(dif, 100, 100, 3)
+    showimg(edged_img)
+    edged_img = cv2.dilate(edged_img, np.ones((2, 2), np.uint8), iterations=1)
+    showimg(edged_img)
+    hough_threshhold = 60
+    while True:
+        print("Trying %s for hough threshhold" % hough_threshhold)
+        lines = cv2.HoughLines(edged_img, 1, math.pi / 180, hough_threshhold, 15, 10)
+        print("Count of lines found: %s" % len(lines))
+        if hough_threshhold < 10:
+            print("Sorry, not today :(")
+            break
+        if len(lines) < 4:
+            hough_threshhold -= 5
+            continue
+        else:
+            segmented = segment_by_angle_kmeans(lines)
+            intersections = segmented_intersections(segmented)
+            print(len(intersections))
+            break
+    corners = []
+    near_thresh = image_height // 3
+    while True:
+        print("Finding corners with threshold %s" % near_thresh)
+        for i in intersections:
+            if i[0][0] < 0 or i[0][1] < 0:
+                continue
+            any_center_nearby = False
+            for c in corners:
+                if near_point(i[0], c, near_thresh):
+                    any_center_nearby = True
+                    break
+            if any_center_nearby:
+                continue
+            corners.append(tuple(i[0]))
+        print("Current len of corners is %s " % len(corners))
+        if near_thresh <= 0:
+            break
+        elif len(corners) < 4:
+            near_thresh -= 50
+            corners.clear()
+        else:
+            break
+    print("Len of corners: {}".format(len(corners)))
+    if len(corners) < 4:
+        print('Wrong number of corners')
+        exit(0)
+    corners = corners[:4]
+    visualized_corners = np.copy(img)
+    for c in corners:
+        cv2.circle(visualized_corners, c, 5, (230, 50, 180), thickness=5)
+    showimg(visualized_corners)
+    corners_center = [0, 0]
+    for c in corners:
+        corners_center[0] += c[0]
+        corners_center[1] += c[1]
+    corners_center[0] /= len(corners)
+    corners_center[1] /= len(corners)
+    corners = sortCorners(corners, corners_center)
+    cc_width = 1000
+    cc_height = 600
+    mapped_corners = [
+        (0, 0),
+        (cc_width, 0),
+        (cc_width, cc_height),
+        (0, cc_height)
+    ]
+    mapped_corners = np.array(mapped_corners, dtype=np.float32)
+    transmtx = cv2.getPerspectiveTransform(corners, mapped_corners)
+    cc_image = cv2.warpPerspective(img, transmtx, (cc_width, cc_height))
+    showimg(cc_image)
 
-    numbers_part = numbers_part[min_height:max_height, :]
-hsv_number_part_final = cv2.cvtColor(np.copy(numbers_part), cv2.COLOR_BGR2HSV)
-bw_number_part = cv2.inRange(hsv_number_part_final, (0, 0, 0), (200, 255, base_vue))
-showimg(bw_number_part)
-bw_number_part = trim(bw_number_part, open=False)
-showimg(bw_number_part)
-nums_h, nums_w = bw_number_part.shape
-parts_height, parts_width = bw_number_part.shape
-part_width = (parts_width - 1) // 4
-p1, next = split_horizontal(bw_number_part, 0, part_width)
-p2, next = split_horizontal(bw_number_part, next, next + part_width)
-p3, next = split_horizontal(bw_number_part, next, next + part_width)
-p4, next = split_horizontal(bw_number_part, next, parts_width + 2)
-parts = [p1, p2, p3, p4]
-cc = ""
-for i, part in enumerate(parts):
-    print("Showing part {}".format(i))
-    part = trim(part, open=False)
-    showimg(part)
-    digit_group_height, digit_group_width = part.shape
-    digit_width = (digit_group_width - 1) // 4
-    d1, next = split_horizontal(part, 0, digit_width)
-    showimg(d1)
-    d1 = trim(d1)
-    c = try_ocr(d1)
-    cc += c
-    showimg(d1)
-    d2, next = split_horizontal(part, next, next + digit_width)
-    showimg(d2)
-    d2 = trim(d2)
-    c = try_ocr(d2)
-    cc += c
-    showimg(d2)
-    d3, next = split_horizontal(part, next, next + digit_width)
-    showimg(d3)
-    d3 = trim(d3)
-    c = try_ocr(d3)
-    cc += c
-    showimg(d3)
-    d4, next = split_horizontal(part, next, digit_group_width + 5)
-    showimg(d4)
-    d4 = trim(d4)
-    c = try_ocr(d4)
-    cc += c + " "
-    showimg(d4)
-print("Final cc: %s" % cc)
-showimg(img)
+    bank_name = find_bank(cc_image)
+    print(bank_name)
+    x1, y1, x2, y2 = (20, 280, -20, 540)
+    if bank_name and LOGO.BANKS[bank_name]['numPos']:
+        x1, y1 = LOGO.BANKS[bank_name]['numPos']['from']
+        x2, y2 = LOGO.BANKS[bank_name]['numPos']['to']
+    numbers_part = cc_image[y1 - 10:y2 + 10, x1:x2]
+    hsvNumber = cv2.cvtColor(numbers_part, cv2.COLOR_BGR2HSV)
+    while True:
+        print("Filtering black")
+        mask = cv2.inRange(hsvNumber, (0, 0, 0), (200, 255, base_vue))
+        if np.count_nonzero(mask) < ((hsvNumber.shape[0] * hsvNumber.shape[1] * 4) / 10):
+            break
+        base_vue -= 20
+        print("Too DARK!")
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1)
+    print("Number of contours: {}".format(len(contours)))
+    if len(contours) > 1:
+        v_numbers_part = np.copy(numbers_part)
+        for c in contours:
+            cv2.drawContours(v_numbers_part, [c], 0, (255, 255, 255), 1)
+        showimg(v_numbers_part)
+    showimg(numbers_part)
+    realcontours = []
+    contours_rect = []
+    x_array = []
+    y_array = []
+    if len(contours) > 1:
+        for c in contours:
+            carea = cv2.contourArea(c)
+            if carea >= 12 * 24 or carea == 0.0:
+                [x, y, w, h] = cv2.boundingRect(c)
+                if h > 12 and w > 8:
+                    if w * h >= 12 * 24:
+                        x_array.append(x + (w // 2))
+                        y_array.append(y + (h // 2))
+                        contours_rect.append([x, y, w, h])
+                        realcontours.append(c)
+        height_median = int(np.median(y_array))
+        print("Number of improved contours: {}".format(len(realcontours)))
+        max_height = height_median + 30
+        min_height = height_median - 30
+        if min_height < 0:
+            min_height = 0
+        if max_height >= numbers_part.shape[0]:
+            max_height = numbers_part.shape[0] - 1
+        print(max_height)
+        print(min_height)
+
+        numbers_part = numbers_part[min_height:max_height, :]
+    hsv_number_part_final = cv2.cvtColor(np.copy(numbers_part), cv2.COLOR_BGR2HSV)
+    bw_number_part = cv2.inRange(hsv_number_part_final, (0, 0, 0), (200, 255, base_vue))
+    showimg(bw_number_part)
+    bw_number_part = trim(bw_number_part, open=False)
+    showimg(bw_number_part)
+    parts_height, parts_width = bw_number_part.shape
+    part_width = (parts_width - 1) // 4
+    p1, next = split_horizontal(bw_number_part, 0, part_width)
+    p2, next = split_horizontal(bw_number_part, next, next + part_width)
+    p3, next = split_horizontal(bw_number_part, next, next + part_width)
+    p4, next = split_horizontal(bw_number_part, next, parts_width + 2)
+    parts = [p1, p2, p3, p4]
+    cc = ""
+    for i, part in enumerate(parts):
+        print("Showing part {}".format(i))
+        part = trim(part, open=False)
+        showimg(part)
+        digit_group_height, digit_group_width = part.shape
+        digit_width = (digit_group_width - 1) // 4
+        d1, next = split_horizontal(part, 0, digit_width)
+        showimg(d1)
+        d1 = trim(d1)
+        c = try_ocr(d1)
+        cc += c
+        showimg(d1)
+        d2, next = split_horizontal(part, next, next + digit_width)
+        showimg(d2)
+        d2 = trim(d2)
+        c = try_ocr(d2)
+        cc += c
+        showimg(d2)
+        d3, next = split_horizontal(part, next, next + digit_width)
+        showimg(d3)
+        d3 = trim(d3)
+        c = try_ocr(d3)
+        cc += c
+        showimg(d3)
+        d4, next = split_horizontal(part, next, digit_group_width + 5)
+        showimg(d4)
+        d4 = trim(d4)
+        c = try_ocr(d4)
+        cc += c + " "
+        showimg(d4)
+    print("Final cc: %s" % cc)
+    showimg(img)
+
+    return cc, bank_name
+
+
+if len(sys.argv) != 2:
+    print("Usage: python {} path_of_input_image".format(sys.argv[0]))
+    exit()
+
+img_name = sys.argv[1]
+cc, bank_name = run(img_name)
